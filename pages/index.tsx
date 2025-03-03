@@ -4,148 +4,161 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import { Button } from "@/components/ui/button"
+} from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Drawer, DrawerContent } from '@/components/ui/drawer'
+import FormContainer from '@/container/FormContainer'
+import useSWR from 'swr'
+import { useState, useRef } from 'react'
 import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form"
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { getToken } from 'next-auth/jwt'
+import { useSession, signOut } from 'next-auth/react'
 
-import { Input } from "@/components/ui/input"
-import { useState } from "react"
-import useSWR from'swr'
-
-const formSchema = z.object({
-  title: z.string().min(1),
-  url: z.string().min(1),
-})
-
-const fetcher = ( ...args ) => fetch(...args).then((res) => res.json())
+const fetcher = (...args) => fetch(...args).then((res) => res.json())
 
 export default function Home() {
+  const session = useSession()
+  const popOverRef = useRef<HTMLButtonElement | null>(null)
+  const [showEdit, setShowEdit] = useState<boolean>(false)
+  const [showCreate, setShowCreate] = useState<boolean>(false)
+  const [valueEdit, setShowValueEdit] = useState<{
+    id: number
+    title: string
+    url: string
+  }>({
+    id: 0,
+    title: '',
+    url: '',
+  })
+  const { data: dataLinks, isLoading, mutate } = useSWR('/api/links', fetcher)
 
-  const [loading, setLoading] = useState<boolean>(false)
-  const {data: dataLinks, isLoading} = useSWR('/api/links', fetcher)
-
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      title: '',
-      url: '',
-    },
-  });
-
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    setLoading(true)
-    console.log(values)
+  const handleDelete = async (id: number) => {
     try {
-        await fetch('/api/links/create' , {
-        method: 'POST',
-        body: JSON.stringify(values)
+      await fetch(`/api/links/delete/${id}`, {
+        method: 'DELETE',
       })
     } catch (error) {
-      
-    }finally{
-      setLoading(false)
+    } finally {
+      mutate()
+      popOverRef.current?.click()
     }
   }
 
   return (
     <>
-    <div className="grid grid-cols-1 gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Form Create Link</CardTitle>
-          <CardDescription>Submit your Linkl hire</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              <FormField
-                control={form.control}
-                name="title"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Title</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Title ..." {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="url"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Title</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Url ..." {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type="submit" disabled={loading}>
-                {loading ? 'Loading...' : 'Submit'}
-              </Button>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
-        {
-          isLoading && <Card>
-              <CardContent>
-                Loadingss...
-              </CardContent>
-            </Card>
-        }
-        {
-          dataLinks?.data.map((link: {id:number, url:string, title:string}) => (
+      <div className="grid grid-cols-1 gap-4">
+        <div className="container">
+          <h1 className="text-xl font-bold">{`Hello ${session.data?.user?.email}`}</h1>
+          <p>This is an area to create your links , let's put here!!!</p>
+          <Button variant={'link'} size={'sm'} onClick={() => signOut()}>
+            SignOut
+          </Button>
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={() => setShowCreate(true)}>Add Links</Button>
+        </div>
+        {isLoading && (
+          <Card>
+            <CardContent>Loadingss...</CardContent>
+          </Card>
+        )}
+        {dataLinks?.data.map(
+          (link: { id: number; url: string; title: string }) => (
             <Card key={link.id}>
               <CardContent className="flex justify-between">
                 <a href={link.url} target="_blank">
                   {link.title}
                 </a>
-                <Drawer>
-                  <DrawerTrigger>Open</DrawerTrigger>
-                  <DrawerContent>
-                    <DrawerHeader>
-                      <DrawerTitle>Are you absolutely sure?</DrawerTitle>
-                      <DrawerDescription>This action cannot be undone.</DrawerDescription>
-                    </DrawerHeader>
-                    <DrawerFooter>
-                      <Button>Submit</Button>
-                      <DrawerClose>
-                        <Button variant="outline">Cancel</Button>
-                      </DrawerClose>
-                    </DrawerFooter>
-                  </DrawerContent>
-                </Drawer>
+                <div>
+                  <Button
+                    size="sm"
+                    variant={'secondary'}
+                    onClick={() => {
+                      setShowEdit(true)
+                      setShowValueEdit({
+                        id: link.id,
+                        title: link.title,
+                        url: link.url,
+                      })
+                    }}
+                  >
+                    Edit
+                  </Button>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button ref={popOverRef} variant="ghost" size="sm">
+                        Delete
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-89">
+                      <p>Are you sure for delete this data ?</p>
+                      <Button size="sm" onClick={() => handleDelete(link.id)}>
+                        Yes
+                      </Button>
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </CardContent>
             </Card>
-          ))
-        }
-    </div>
+          ),
+        )}
+      </div>
+
+      {/* Drawer Create */}
+      <Drawer open={showCreate} onOpenChange={setShowCreate}>
+        <DrawerContent>
+          <div className="container ,x-auto p-4">
+            <FormContainer
+              id={valueEdit.id}
+              onFinished={() => {
+                setShowCreate(false)
+                mutate()
+              }}
+            />
+          </div>
+        </DrawerContent>
+      </Drawer>
+
+      {/* Drawer Edit */}
+      <Drawer open={showEdit} onOpenChange={setShowEdit}>
+        <DrawerContent>
+          <div className="container ,x-auto p-4">
+            <FormContainer
+              id={valueEdit.id}
+              values={{
+                title: valueEdit.title,
+                url: valueEdit.url,
+              }}
+              onFinished={() => {
+                setShowEdit(false)
+                mutate()
+              }}
+            />
+          </div>
+        </DrawerContent>
+      </Drawer>
     </>
   )
+}
+
+export const getServerSideProps = async (context) => {
+  const token = await getToken({
+    req: context.req,
+    secret: process.env.NEXTAUTH_SECRET,
+  })
+
+  if (!token) {
+    return {
+      redirect: {
+        destination: '/login',
+        permanent: false,
+      },
+    }
+  }
+
+  return { props: {} }
 }

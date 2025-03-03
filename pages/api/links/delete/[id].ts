@@ -1,33 +1,32 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { db } from '@/lib/db'
 import { linksTable } from '@/lib/db/schema'
-import { isNull, desc, and, eq } from 'drizzle-orm'
+import { sql, eq, and } from 'drizzle-orm'
 import { getToken } from 'next-auth/jwt'
 
 type Response = {
-  id: number
-  title: string
-  url: string
-  created_at: Date | null
-  updated_at: Date | null
-  deleted_at: Date | null
+  deletedId?: number
+  message?: string
 }
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<{ data: Response[] }>,
 ) {
+  if (req.method !== 'DELETE') {
+    res.status(405).json({ data: [{ message: 'Method not allowed' }] })
+  }
   const session = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   const data = await db
-    .select()
-    .from(linksTable)
+    .update(linksTable)
+    .set({ deleted_at: sql`NOW()` })
     .where(
       and(
+        eq(linksTable.id, Number(req.query.id)),
         eq(linksTable.email, String(session?.email)),
-        isNull(linksTable.deleted_at),
       ),
     )
-    .orderBy(desc(linksTable.update_at))
+    .returning({ deletedId: linksTable.id })
 
   res.status(200).json({ data })
 }
